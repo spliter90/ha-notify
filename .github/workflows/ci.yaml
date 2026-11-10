@@ -1,0 +1,109 @@
+# Prüft das Add-on bei jedem Push und Pull Request:
+#  1. Add-on-Konfiguration (offizieller Linter für HA-Add-ons)
+#  2. Python-Code + Kurztest der REST-API (neu → gesehen → quittiert)
+#  3. Docker-Build für amd64 und aarch64 – so wie Home Assistant ihn ausführt
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Add-on-Konfiguration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: frenck/action-addon-linter@v2
+        with:
+          path: ./notify
+
+  test:
+    name: Python + API-Kurztest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Abhängigkeiten
+        run: pip install aiohttp pyyaml
+      - name: Versionen stimmen überein
+        run: |
+          cfg=$(python -c "import yaml;print(yaml.safe_load(open('notify/config.yaml'))['version'])")
+          app=$(grep -Po '^VERSION = "\K[^"]+' notify/app/main.py)
+          echo "config.yaml: $cfg   main.py: $app"
+          test "$cfg" = "$app" || { echo "::error::Version in config.yaml ($cfg) und main.py ($app) unterscheiden sich"; exit 1; }
+          grep -q "^## $cfg" notify/CHANGELOG.md || echo "::warning::CHANGELOG.md hat keinen Abschnitt für $cfg"
+      - name: YAML-Dateien gültig
+        run: |
+          python - <<'EOF'
+          import glob, yaml
+          files = glob.glob("**/*.yaml", recursive=True)
+          for f in files:
+              yaml.safe_load(open(f))
+          print(f"{len(files)} YAML-Dateien ok")
+          EOF
+      - name: Syntax
+        run: python -m py_compile notify/app/main.py
+      - name: API-Kurztest
+        env:
+          NOTIFY_DB: ${{ runner.temp }}/notify.db
+          NOTIFY_OPTIONS: ${{ runner.temp }}/options.json
+        run: |
+          echo '{"default_category":"intern","log_level":"debug"}' > "$NOTIFY_OPTIONS"
+          python -u notify/app/main.py > server.log 2>&1 &
+          for i in $(seq 1 20); do curl -sf http://127.0.0.1:8099/api/health && break; sleep 0.5; done
+          echo
+
+          B=http://127.0.0.1:8099
+          J='Content-Type: application/json'
+          id=$(curl -sf -XPOST $B/api/events -H "$J" \
+                 -d '{"title":"CI-Test","level":"warning","source":"GitHub"}' | jq -r .event.id)
+          test "$(curl -sf $B/api/events/$id | jq -r .status)" = new
+          curl -sf -XPOST $B/api/events/$id/seen > /dev/null
+          test "$(curl -sf $B/api/events/$id | jq -r .status)" = seen
+          curl -sf -XPOST $B/api/events/$id/ack -H "$J" -d '{"note":"ok","by":"CI"}' > /dev/null
+          ev=$(curl -sf $B/api/events/$id)
+          test "$(echo "$ev" | jq -r .status)" = acked
+          test "$(echo "$ev" | jq -r .acked_by)" = CI
+          test "$(echo "$ev" | jq -r .category)" = intern
+          curl -sf -o /dev/null $B/
+          echo "API-Kurztest erfolgreich"
+      - name: Server-Log
+        if: always()
+        run: cat server.log || true
+
+  build:
+    name: Docker-Build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Basis-Image aus build.yaml lesen
+        id: base
+        run: echo "from=$(grep -Po '^\s+${{ matrix.arch }}:\s*\K\S+' notify/build.yaml)" >> "$GITHUB_OUTPUT"
+      - name: Bauen
+        run: |
+          docker buildx build ./notify \
+            --platform ${{ matrix.platform }} \
+            --build-arg BUILD_FROM=${{ steps.base.outputs.from }} \
+            --tag notify-test:${{ matrix.arch }} --load
+      - name: Python und aiohttp im Image vorhanden
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint python3 \
+            notify-test:${{ matrix.arch }} -c "import aiohttp, sqlite3; print('aiohttp', aiohttp.__version__, '| sqlite', sqlite3.sqlite_version)"

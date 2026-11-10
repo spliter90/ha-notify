@@ -1,0 +1,154 @@
+# Beispiel-Automationen für Notify
+
+- alias: Notify – Waschmaschine fertig
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.waschmaschine_leistung
+      below: 3
+      for: "00:03:00"
+  actions:
+    - event: notify_event
+      event_data:
+        title: Waschmaschine fertig
+        message: "Fertig um {{ now().strftime('%H:%M') }}"
+        level: success
+        category: haushalt
+        source: Waschküche
+        key: waschmaschine
+
+- alias: Notify – Haustür zu lange offen
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.haustuer
+      to: "on"
+      for: "00:10:00"
+  actions:
+    - event: notify_event
+      event_data:
+        title: Haustür offen
+        message: Seit mehr als 10 Minuten geöffnet
+        level: warning
+        category: intern
+        source: Flur
+        key: haustuer
+
+- alias: Notify – Haustür geschlossen → Meldung quittieren
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.haustuer
+      to: "off"
+  actions:
+    - event: notify_ack
+      event_data:
+        key: haustuer
+        by: automatisch
+        note: Tür wurde geschlossen
+
+- alias: Notify – Gerät nicht erreichbar
+  triggers:
+    - trigger: state
+      entity_id:
+        - switch.esp32_leds
+        - sensor.theta_kesseltemperatur
+      to: unavailable
+      for: "00:05:00"
+  actions:
+    - event: notify_event
+      event_data:
+        title: "{{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }} nicht erreichbar"
+        level: error
+        category: intern
+        source: Geräte
+        key: "offline_{{ trigger.entity_id }}"
+
+- alias: Notify – Home Assistant gestartet
+  triggers:
+    - trigger: homeassistant
+      event: start
+  actions:
+    - event: notify_event
+      event_data:
+        title: Home Assistant gestartet
+        level: debug
+        category: system
+        source: System
+
+- alias: Notify – Web-Störung → Büro-Licht rot, bis quittiert
+  triggers:
+    - trigger: event
+      event_type: notify_received
+      event_data: { category: web, new: true }
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.event.data.level in ['error', 'critical'] }}"
+  actions:
+    - action: light.turn_on
+      target: { entity_id: light.buero }
+      data: { color_name: red }
+
+- alias: Notify – Web-Störung quittiert → Büro-Licht aus
+  triggers:
+    - trigger: event
+      event_type: notify_acknowledged
+      event_data: { category: web }
+  actions:
+    - action: light.turn_off
+      target: { entity_id: light.buero }
+
+- alias: Notify – LED pulsiert, solange etwas ungesehen ist
+  # z. B. ESP32-LED-Streifen; Farbe nach Schwere
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.notify_unseen
+  actions:
+    - if:
+        - condition: state
+          entity_id: binary_sensor.notify_unseen
+          state: "on"
+      then:
+        - action: light.turn_on
+          target: { entity_id: light.led_streifen }
+          data:
+            effect: Pulse
+            color_name: >-
+              {{ {'critical':'magenta','error':'red','warning':'orange'}.get(
+                   state_attr('binary_sensor.notify_unseen', 'highest_level'), 'blue') }}
+      else:
+        - action: light.turn_off
+          target: { entity_id: light.led_streifen }
+
+- alias: Notify – nach 30 min noch nicht quittiert → erneut ans Handy
+  triggers:
+    - trigger: event
+      event_type: notify_received
+      event_data: { level: critical, new: true }
+  actions:
+    - wait_for_trigger:
+        - trigger: event
+          event_type: notify_acknowledged
+          event_data:
+            id: "{{ trigger.event.data.id }}"
+      timeout: "00:30:00"
+    - if: "{{ not wait.trigger }}"
+      then:
+        - action: notify.mobile_app_pixel
+          data:
+            title: "⚠ Immer noch offen: {{ trigger.event.data.title }}"
+            message: "Seit 30 Minuten nicht quittiert."
+
+- alias: Notify – Mikrotik WAN-Wechsel melden
+  triggers:
+    - trigger: state
+      entity_id: sensor.mikrotik_aktiver_wan
+  conditions:
+    - condition: template
+      value_template: "{{ trigger.from_state.state not in ['unknown', 'unavailable'] }}"
+  actions:
+    - event: notify_event
+      event_data:
+        title: "Internet jetzt über {{ trigger.to_state.state }}"
+        message: "Vorher: {{ trigger.from_state.state }}"
+        level: warning
+        category: extern
+        source: Router
+        tags: [wan, mikrotik]

@@ -1,0 +1,144 @@
+# ---------------------------------------------------------------------------
+# Notify – Dashboard-Bausteine
+# INGRESS-PFAD anpassen: Add-on öffnen, in der Adresszeile steht
+#   /hassio/addon/a0d7b954_notify  →  Pfad unten: /hassio/ingress/a0d7b954_notify
+# Skripte dazu: examples/scripts.yaml
+# ---------------------------------------------------------------------------
+
+# ---- 1) Mushroom-Kachel: alles auf einen Blick -----------------------------
+# Tippen öffnet die Weboberfläche, Doppeltippen = alle gesehen,
+# Halten = alle offenen quittieren.
+- type: custom:mushroom-template-card
+  primary: Benachrichtigungen
+  secondary: >-
+    {% set n = states('sensor.notify_unread') | int(0) %}
+    {% set neu = state_attr('sensor.notify_unread', 'new') | int(0) %}
+    {% if n == 0 %}Alles erledigt{% else %}{{ n }} offen{% if neu %} · {{ neu }} neu{% endif %} · {{ states('sensor.notify_last') }}{% endif %}
+  icon: >-
+    {{ 'mdi:bell-ring' if is_state('binary_sensor.notify_unseen', 'on')
+       else 'mdi:bell-badge' if states('sensor.notify_unread') | int(0) > 0 else 'mdi:bell-check-outline' }}
+  icon_color: >-
+    {{ {'critical':'pink','error':'red','warning':'orange','success':'green',
+        'info':'blue','debug':'grey'}.get(state_attr('sensor.notify_unread','highest_level'), 'disabled') }}
+  tap_action:
+    action: navigate
+    navigation_path: /hassio/ingress/a0d7b954_notify
+  double_tap_action:
+    action: perform-action
+    perform_action: script.notify_alle_gesehen
+  hold_action:
+    action: perform-action
+    perform_action: script.notify_alle_quittieren
+
+# ---- 2) Eine Kachel pro Kategorie (Grid im Sections View) ------------------
+# Für weitere Kategorien Block kopieren und sensor.notify_<name> anpassen.
+# Halten quittiert nur diese Kategorie.
+- type: grid
+  columns: 3
+  square: false
+  cards:
+    - &kategorie
+      type: custom:mushroom-template-card
+      entity: sensor.notify_web
+      primary: "{{ state_attr(entity, 'friendly_name') | replace('Notify ', '') }}"
+      secondary: >-
+        {% set n = states(entity) | int(0) %}
+        {% set evs = state_attr(entity, 'events') or [] %}
+        {% set neu = state_attr(entity, 'new') | int(0) %}
+        {% if n == 0 %}ok{% else %}{{ n }}{% if neu %} ({{ neu }} neu){% endif %} · {{ evs[0].title if evs else '' }}{% endif %}
+      icon: "{{ state_attr(entity, 'icon') }}"
+      icon_color: >-
+        {% set lv = state_attr(entity, 'highest_level') %}
+        {{ {'critical':'pink','error':'red','warning':'orange','success':'green',
+            'info':'blue','debug':'grey'}.get(lv, 'disabled') }}
+      tap_action:
+        action: navigate
+        navigation_path: /hassio/ingress/a0d7b954_notify
+      hold_action:
+        action: perform-action
+        perform_action: script.notify_kategorie_quittieren
+        data: { category: web }   # Aktionen werden nicht templatisiert → fest eintragen
+    - <<: *kategorie
+      entity: sensor.notify_intern
+      hold_action:
+        action: perform-action
+        perform_action: script.notify_kategorie_quittieren
+        data: { category: intern }
+    - <<: *kategorie
+      entity: sensor.notify_extern
+      hold_action:
+        action: perform-action
+        perform_action: script.notify_kategorie_quittieren
+        data: { category: extern }
+
+# ---- 3) Status der Web-Monitore -------------------------------------------
+- type: entities
+  title: Dienste
+  state_color: true
+  entities:
+    - entity: binary_sensor.notify_monitor_flipperpass
+      name: FlipperPass
+      secondary_info: last-changed
+    - entity: binary_sensor.notify_monitor_tower_ocr
+      name: Tower OCR
+      secondary_info: last-changed
+
+# Kompakt als Chips (rot, sobald ein Dienst ausfällt):
+- type: custom:mushroom-chips-card
+  chips:
+    - type: template
+      entity: binary_sensor.notify_monitor_flipperpass
+      icon: mdi:web
+      content: >-
+        FlipperPass {{ state_attr(entity, 'response_ms') ~ ' ms' if is_state(entity, 'on') else 'down' }}
+      icon_color: "{{ 'green' if is_state(entity, 'on') else 'red' }}"
+
+# ---- 4) Liste der offenen Ereignisse (Markdown, ohne Zusatzkarten) --------
+# 🆕 = noch nicht gesehen, 👁 = gesehen von …
+# Für nur eine Kategorie: sensor.notify_unread → sensor.notify_web
+- type: markdown
+  title: Benachrichtigungen
+  content: |
+    {% set evs = state_attr('sensor.notify_unread', 'events') or [] %}
+    {% set dot = {'critical':'🟣','error':'🔴','warning':'🟠','success':'🟢','info':'🔵','debug':'⚪'} %}
+    {% if evs | count == 0 %}
+    Nichts offen ✨
+    {% else %}
+    {% for e in evs %}
+    {{ dot[e.level] }} {{ '🆕 ' if e.status == 'new' }}**{{ e.title }}**{% if e.count > 1 %} ×{{ e.count }}{% endif %}{% if e.message %}<br>{{ e.message }}{% endif %}<br>
+    <small>{% if e.category %}{{ e.category | capitalize }} · {% endif %}{{ e.source }}{% if e.source %} · {% endif %}{{ e.when }}{% if e.seen_by %} · 👁 {{ e.seen_by }}{% endif %}</small>
+
+    {% endfor %}
+    {% endif %}
+
+# ---- 5) Nur anzeigen, wenn es etwas Kritisches gibt ------------------------
+- type: conditional
+  conditions:
+    - condition: state
+      entity: binary_sensor.notify_critical
+      state: "on"
+  card:
+    type: custom:mushroom-template-card
+    primary: "{{ states('sensor.notify_last') }}"
+    secondary: "{{ state_attr('sensor.notify_last', 'message') }}"
+    icon: mdi:alarm-light
+    icon_color: pink
+    tap_action:
+      action: navigate
+      navigation_path: /hassio/ingress/a0d7b954_notify
+
+# ---- 6) Letzte Quittung ----------------------------------------------------
+- type: custom:mushroom-template-card
+  entity: sensor.notify_last
+  primary: "{{ states(entity) }}"
+  secondary: >-
+    {% set a = states.sensor.notify_last.attributes %}
+    {% if a.status == 'acked' %}✓ {{ a.acked_by }}{% if a.ack_note %}: „{{ a.ack_note }}“{% endif %}
+    {% elif a.status == 'seen' %}👁 gesehen von {{ a.seen_by }} – noch offen
+    {% else %}neu · {{ a.when }}{% endif %}
+  icon: "{{ state_attr(entity, 'icon') }}"
+  icon_color: >-
+    {{ {'acked':'green','seen':'amber','new':'blue'}.get(state_attr(entity, 'status'), 'grey') }}
+  tap_action:
+    action: navigate
+    navigation_path: /hassio/ingress/a0d7b954_notify
