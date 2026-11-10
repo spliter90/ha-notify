@@ -8,10 +8,8 @@ arch:
   - amd64
 init: false
 startup: services
-boot: auto
 homeassistant_api: true
 ingress: true
-ingress_port: 8099
 panel_icon: mdi:bell-ring-outline
 panel_title: Notify
 ports:
