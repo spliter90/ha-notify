@@ -1,0 +1,36 @@
+# In scripts.yaml (oder unter script: in configuration.yaml)
+# Der auslösende HA-Benutzer wird automatisch als „quittiert von“ eingetragen.
+notify_alle_quittieren:
+  alias: Notify – alle quittieren
+  icon: mdi:check-all
+  sequence:
+    - event: notify_ack
+      event_data: {}
+
+notify_alle_gesehen:
+  alias: Notify – alle gesehen
+  icon: mdi:eye-check-outline
+  sequence:
+    - event: notify_seen
+      event_data: {}
+
+notify_kategorie_quittieren:
+  alias: Notify – Kategorie quittieren
+  icon: mdi:check-all
+  fields:
+    category:
+      name: Kategorie
+      example: web
+      required: true
+      selector:
+        text:
+    note:
+      name: Kommentar
+      example: Server neu gestartet
+      selector:
+        text:
+  sequence:
+    - event: notify_ack
+      event_data:
+        category: "{{ category }}"
+        note: "{{ note | default('') }}"

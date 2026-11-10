@@ -1,0 +1,50 @@
+configuration:
+  retention_days:
+    name: Aufbewahrung (Tage)
+    description: Ereignisse, die älter sind, werden automatisch gelöscht.
+  max_events:
+    name: Maximale Anzahl Ereignisse
+    description: Darüber hinaus werden die ältesten entfernt, quittierte zuerst.
+  api_token:
+    name: API-Token
+    description: 'Pflicht für Zugriffe von außerhalb von Home Assistant (Port 8099). Header "Authorization: Bearer <token>" oder "?token=<token>".'
+  default_category:
+    name: Standard-Kategorie
+    description: Kategorie für Ereignisse, die selbst keine angeben (leer = ohne Kategorie).
+  categories:
+    name: Kategorien
+    description: 'Liste mit name, label, icon, color und optional forward_service / forward_min_level (Weiterleitung nur für diese Kategorie, "none" = nie weiterleiten).'
+  monitors:
+    name: Web-Monitore
+    description: 'Liste mit name und url (http/https oder tcp://host:port), optional category, interval, timeout, failures, keyword, expect_status, level, verify_ssl.'
+  event_type:
+    name: Event-Typ für neue Ereignisse
+    description: Home-Assistant-Event, auf das das Add-on hört (z. B. aus Automationen).
+  ack_event_type:
+    name: Event-Typ zum Quittieren
+    description: Home-Assistant-Event, das Ereignisse quittiert (optional mit by, note, id/ids, key, category).
+  seen_event_type:
+    name: Event-Typ für „gesehen“
+    description: Home-Assistant-Event, das Ereignisse als gesehen markiert.
+  ack_min_level:
+    name: Quittieren nötig ab Stufe
+    description: Ab dieser Stufe muss ein Ereignis ausdrücklich quittiert werden. Darunter gilt es mit „gesehen“ als erledigt. „debug“ = alles muss quittiert werden.
+  mobile_actions:
+    name: Buttons in Handy-Benachrichtigungen
+    description: Weitergeleitete Meldungen an notify.mobile_app_… bekommen „Quittieren“, „Gesehen“ und „Mit Kommentar“. Nach dem Quittieren verschwindet die Benachrichtigung vom Handy.
+  fire_events:
+    name: HA-Events auslösen
+    description: Bei neuen Ereignissen "notify_received", beim Quittieren "notify_acknowledged" auslösen, damit Automationen reagieren können.
+  sensor_events:
+    name: Ereignisse im Sensor
+    description: Wie viele aktuelle Ereignisse als Attribut in sensor.notify_unread stehen (für Dashboard-Karten).
+  forward_service:
+    name: Weiterleiten an
+    description: Optionaler Notify-Dienst, z. B. notify.mobile_app_pixel. Leer = keine Weiterleitung.
+  forward_min_level:
+    name: Weiterleiten ab Stufe
+    description: Nur Ereignisse ab dieser Stufe werden weitergeleitet.
+  log_level:
+    name: Log-Level
+network:
+  8099/tcp: REST-API für Geräte außerhalb von Home Assistant (nur mit API-Token)

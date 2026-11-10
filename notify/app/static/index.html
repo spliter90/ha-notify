@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notify</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1c1f24; --muted: #6b7280; --line: #e3e5e9;
+    --accent: #2f6fed; --accent-soft: #e6eefe; --unread: #f7f9ff; --ok: #1f9d55;
+    --debug: #8a94a6; --info: #2f6fed; --success: #1f9d55; --warning: #e08a00;
+    --error: #e0423a; --critical: #b01e6c;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316; --card: #1b1e23; --text: #e8eaed; --muted: #9aa1ab; --line: #2b2f36;
+      --accent: #6d9bff; --accent-soft: #1f2a40; --unread: #1f2430; --ok: #3ccf7f;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  header h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  .badge { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 9px;
+    font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .badge.zero { background: var(--line); color: var(--muted); }
+  .badge.soft { background: var(--accent-soft); color: var(--accent); }
+  .conn { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--success); }
+  .spacer { flex: 1; }
+
+  .btn { border: 1px solid var(--line); background: var(--card); border-radius: 9px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.icon { padding: 6px 8px; line-height: 0; }
+  .btn.ghost.icon:hover { background: var(--bg); }
+  .btn.ack:hover { color: var(--ok); }
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  svg.sm { width: 14px; height: 14px; vertical-align: -2px; }
+
+  /* Monitore */
+  .monitors { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
+  .mon { flex: none; display: flex; align-items: center; gap: 8px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; cursor: pointer;
+    font-size: 13.5px; box-shadow: var(--shadow); }
+  .mon .dot { width: 10px; height: 10px; }
+  .mon.up .dot { background: var(--success); }
+  .mon.down { border-color: var(--error); }
+  .mon.down .dot { background: var(--error); animation: pulse 1.6s infinite; }
+  .mon .sub { color: var(--muted); font-size: 12px; max-width: 280px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .mon.down .sub { color: var(--error); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .search { flex: 1 1 220px; display: flex; align-items: center; gap: 8px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; }
+  .search input { border: 0; outline: 0; background: transparent; padding: 8px 0; width: 100%; }
+  select { border: 1px solid var(--line); background: var(--card); border-radius: 9px; padding: 7px 10px; }
+
+  .filters { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chips .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em;
+    width: 74px; flex: none; }
+  .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+    padding: 3px 10px; cursor: pointer; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .chip .sw { width: 8px; height: 8px; border-radius: 50%; }
+  .chip.on { background: var(--accent-soft); border-color: var(--accent); }
+  .chip .n { color: var(--muted); font-size: 12px; }
+  .chip .n.hot { color: #fff; background: var(--sw, var(--accent)); border-radius: 999px; padding: 0 6px; }
+  .clear { font-size: 12.5px; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 3px 6px; }
+
+  .group { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 12px 2px 2px; display: flex; align-items: center; gap: 8px; }
+  .group .sw { width: 9px; height: 9px; border-radius: 50%; }
+  .group:first-child { margin-top: 0; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+
+  /* Ereignis-Karte: neu → gesehen → quittiert */
+  .ev { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); display: grid; grid-template-columns: 4px 1fr auto; overflow: hidden;
+    transition: opacity .25s, background .4s; }
+  .ev.s-new { background: var(--unread); }
+  .ev.s-acked { opacity: .68; }
+  .ev .stripe { background: var(--lv); }
+  .ev.s-acked .stripe { background: var(--line); }
+  .ev .body { padding: 10px 12px; min-width: 0; cursor: pointer; }
+  .ev .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ev .title { font-weight: 600; overflow-wrap: anywhere; }
+  .ev.s-new .title::before { content: ""; display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--accent); margin-right: 7px; vertical-align: middle; }
+  .ev.s-acked .title { text-decoration: line-through; text-decoration-color: var(--muted); text-decoration-thickness: 1px; }
+  .ev .lvl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--lv); font-weight: 700; }
+  .ev .st { font-size: 11px; border-radius: 999px; padding: 0 7px; font-weight: 600; }
+  .ev .st.new { background: var(--accent); color: #fff; }
+  .ev .st.acked { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .ev .cat { font-size: 11.5px; border-radius: 999px; padding: 0 8px; font-weight: 600;
+    color: var(--cat); background: color-mix(in srgb, var(--cat) 14%, transparent); }
+  .ev .msg { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+  .ev .meta { color: var(--muted); font-size: 12.5px; margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+  .ev .tag { background: var(--bg); border-radius: 5px; padding: 0 6px; cursor: pointer; }
+  .ev .tag:hover { color: var(--accent); }
+  .ev .count { background: var(--lv); color: #fff; border-radius: 999px; padding: 0 7px; font-weight: 600; font-size: 12px; }
+  .ev .ackline { margin-top: 6px; font-size: 13px; color: var(--ok); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .ev .ackline q { color: var(--text); font-style: italic; }
+  .ev .actions { display: flex; flex-direction: column; justify-content: center; padding: 4px; gap: 2px; }
+  .ev .detail { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; cursor: default; }
+  .ev .ackform { display: flex; gap: 8px; }
+  .ev .ackform input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg);
+    border-radius: 8px; padding: 7px 10px; }
+  .ev pre { background: var(--bg); border-radius: 8px; padding: 8px; font-size: 12px; overflow: auto;
+    margin: 0; max-height: 280px; }
+  .empty { text-align: center; color: var(--muted); padding: 56px 16px; }
+  .empty svg { width: 40px; height: 40px; stroke-width: 1.5; margin-bottom: 8px; }
+  .more { display: flex; justify-content: center; margin: 14px 0; }
+
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text);
+    padding: 18px; width: min(480px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog h2 { margin: 0 0 12px; font-size: 18px; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; color: var(--muted); flex: 1; }
+  .field input, .field textarea, .field select { color: var(--text); border: 1px solid var(--line);
+    background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .pair { display: flex; gap: 8px; }
+  .menu { position: relative; }
+  .menu-list { position: absolute; right: 0; top: calc(100% + 6px); background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px;
+    min-width: 250px; z-index: 5; display: none; }
+  .menu-list.open { display: block; }
+  .menu-list button { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: 0; background: none;
+    padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+  .menu-list button:hover { background: var(--bg); }
+  .menu-list .danger { color: var(--error); }
+  .menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+  .menu-list .check { color: var(--accent); font-weight: 700; }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text);
+    color: var(--bg); padding: 8px 8px 8px 14px; border-radius: 9px; font-size: 14px; opacity: 0;
+    transition: opacity .2s; pointer-events: none; display: flex; gap: 12px; align-items: center;
+    max-width: calc(100vw - 32px); }
+  .toast.show { opacity: 1; pointer-events: auto; }
+  .toast button { background: none; border: 0; color: var(--accent); font-weight: 600; cursor: pointer; padding: 2px 6px; }
+  @media (prefers-color-scheme: dark) { .toast button { color: #2f6fed; } }
+  .toast:not(.has-action) { padding-right: 14px; }
+  .show-sm { display: none; }
+  @media (max-width: 560px) {
+    .wrap { padding: 12px; }
+    header { gap: 8px; }
+    header h1 { font-size: 19px; }
+    .hide-sm { display: none !important; }
+    .chips .lbl { width: 100%; }
+    .filters { display: none; }
+    .filters.open { display: flex; }
+    .show-sm { display: inline-flex !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Notify</h1>
+    <span id="badge" class="badge zero" title="Offen (nicht quittiert)">0</span>
+    <span id="badgeNew" class="badge soft" title="Noch nicht gesehen" hidden></span>
+    <span class="conn" title="Verbindung zu Home Assistant"><span id="dot" class="dot"></span><span id="conn" class="hide-sm">…</span></span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnAckAll" title="Alle angezeigten offenen Ereignisse quittieren">
+      <svg viewBox="0 0 24 24"><path d="M2 12l5 5L18 6M12 17l1 1L22 9"/></svg><span class="hide-sm">Alle quittieren</span></button>
+    <div class="menu">
+      <button class="btn icon" id="btnMenu" aria-label="Mehr"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+      <div class="menu-list" id="menu">
+        <button data-act="seenall">Alle als gesehen markieren</button>
+        <button data-act="autoseen">Beim Anzeigen als gesehen markieren <span class="check" id="autoSeenMark">✓</span></button>
+        <hr>
+        <button data-act="new">Ereignis anlegen …</button>
+        <button data-act="export">Als JSON exportieren</button>
+        <hr>
+        <button data-act="delacked" class="danger">Quittierte löschen</button>
+        <button data-act="delall" class="danger">Alle löschen</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="monitors" id="monitors" hidden></div>
+
+  <div class="toolbar">
+    <label class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="q" type="search" placeholder="Suchen (auch in Details und Kommentaren) …" autocomplete="off"></label>
+    <select id="source" title="Quelle"><option value="">Alle Quellen</option></select>
+    <select id="sort" title="Sortierung">
+      <option value="new">Neueste zuerst</option>
+      <option value="severity">Nach Schwere</option>
+      <option value="category">Nach Kategorie</option>
+      <option value="source">Nach Quelle</option>
+      <option value="oldest_open">Älteste offene zuerst</option>
+    </select>
+    <button class="chip show-sm" id="btnFilter">Filter<span class="n" id="filterCount"></span></button>
+  </div>
+  <div class="filters">
+    <div class="chips" id="statuses"><span class="lbl">Status</span></div>
+    <div class="chips" id="cats"><span class="lbl">Kategorie</span></div>
+    <div class="chips" id="levels"><span class="lbl">Stufe</span></div>
+    <div class="chips" id="tags" hidden><span class="lbl">Tags</span></div>
+  </div>
+
+  <div class="list" id="list"></div>
+  <div class="more"><button class="btn" id="btnMore" hidden>Mehr laden</button></div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h2>Ereignis anlegen</h2>
+    <label class="field">Titel <input name="title" required maxlength="300"></label>
+    <label class="field">Nachricht <textarea name="message" rows="3"></textarea></label>
+    <div class="pair">
+      <label class="field">Stufe <select name="level"></select></label>
+      <label class="field">Kategorie <select name="category"></select></label>
+    </div>
+    <div class="pair">
+      <label class="field">Quelle <input name="source" placeholder="z. B. Keller"></label>
+      <label class="field">Tags <input name="tags" placeholder="kommagetrennt"></label>
+    </div>
+    <div class="row">
+      <button class="btn ghost" value="cancel" formnovalidate>Abbrechen</button>
+      <button class="btn primary" value="ok">Speichern</button>
+    </div>
+  </form>
+</dialog>
+<div class="toast" id="toast"><span id="toastText"></span><button id="toastBtn" hidden></button></div>
+
+<script>
+(() => {
+  const LEVELS = { debug: "Debug", info: "Info", success: "Erfolg", warning: "Warnung", error: "Fehler", critical: "Kritisch" };
+  const STATUS = { new: "Neu", seen: "Gesehen", acked: "Quittiert" };
+  const TOKEN = new URLSearchParams(location.search).get("token");
+  const PAGE = 50, SEEN_DELAY = 1500;
+  const $ = (id) => document.getElementById(id);
+  const state = { levels: new Set(), cats: new Set(), tags: new Set(), statuses: new Set(), q: "", source: "",
+                  sort: "new", limit: PAGE, open: new Set(), autoSeen: true };
+  let CATS = [], CFG = {}, STATS = {}, lastSig = "";
+  const catInfo = (name) => CATS.find((c) => c.name === (name || "_none"))
+    || { name, label: name ? name[0].toUpperCase() + name.slice(1) : "Ohne Kategorie", color: "#9aa1ab" };
+
+  // ---- Einstellungen je Betrachter (nur Komfort) ----------------------
+  const STORE_KEY = "notify-filter";
+  function saveFilter() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ levels: [...state.levels], cats: [...state.cats],
+      tags: [...state.tags], statuses: [...state.statuses], sort: state.sort, autoSeen: state.autoSeen })); } catch {}
+  }
+  function loadFilter() {
+    try {
+      const f = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+      state.levels = new Set(f.levels || []); state.cats = new Set(f.cats || []);
+      state.tags = new Set(f.tags || []); state.sort = f.sort || "new";
+      state.statuses = new Set(f.statuses || (f.unread ? ["new", "seen"] : []));   // 1.1: „nur ungelesen“
+      state.autoSeen = f.autoSeen !== false;
+    } catch {}
+  }
+
+  // Relative Pfade: funktionieren unter Ingress (/api/hassio_ingress/<token>/) und direkt
+  async function api(path, opts = {}) {
+    const headers = { ...(opts.body ? { "Content-Type": "application/json" } : {}) };
+    if (TOKEN) headers.Authorization = "Bearer " + TOKEN;
+    const res = await fetch(path, { ...opts, headers });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
+  const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
+
+  function toast(text, action, onAction) {
+    const t = $("toast"), b = $("toastBtn");
+    $("toastText").textContent = text;
+    b.hidden = !action; t.classList.toggle("has-action", !!action);
+    if (action) { b.textContent = action; b.onclick = () => { t.classList.remove("show"); onAction(); }; }
+    t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), action ? 6000 : 2200);
+  }
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function ago(iso) {
+    if (!iso) return "–";
+    const d = new Date(iso), s = (Date.now() - d) / 1000;
+    if (s < 60) return "gerade eben";
+    if (s < 3600) return `vor ${Math.floor(s / 60)} min`;
+    if (s < 86400) return `vor ${Math.floor(s / 3600)} h`;
+    return d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+  function dur(iso) {
+    const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+    if (s < 60) return `${Math.floor(s)} s`;
+    if (s < 3600) return `${Math.floor(s / 60)} min`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min`;
+    return `${Math.floor(s / 86400)} d ${Math.floor(s % 86400 / 3600)} h`;
+  }
+  const ICON = {
+    eye: `<svg class="sm" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    check: `<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>`,
+    checkSm: `<svg class="sm" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>`,
+    reopen: `<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>`,
+    trash: `<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>`,
+  };
+
+  // ---- Chips ---------------------------------------------------------
+  function chip(label, color, on, onclick, title) {
+    const b = document.createElement("button");
+    b.className = "chip" + (on ? " on" : "");
+    b.innerHTML = `${color ? `<span class="sw" style="background:${color}"></span>` : ""}${esc(label)}<span class="n"></span>`;
+    if (color) b.style.setProperty("--sw", color);
+    if (title) b.title = title;
+    b.onclick = onclick;
+    return b;
+  }
+  function toggle(set, value) { set.has(value) ? set.delete(value) : set.add(value); saveFilter(); reset(); }
+
+  function buildStaticChips() {
+    const ackLabel = LEVELS[CFG.ack_min_level] || "Warnung";
+    const titles = {
+      new: "Noch von niemandem gesehen",
+      seen: `Gesehen, aber noch nicht quittiert. Meldungen unter „${ackLabel}“ gelten beim Ansehen als erledigt.`,
+      acked: "Quittiert (erledigt)",
+    };
+    const colors = { new: "var(--accent)", seen: "var(--muted)", acked: "var(--ok)" };
+    for (const [st, name] of Object.entries(STATUS)) {
+      const b = chip(name, colors[st], state.statuses.has(st), () => { b.classList.toggle("on"); toggle(state.statuses, st); }, titles[st]);
+      b.dataset.v = st; $("statuses").append(b);
+    }
+    for (const [lv, name] of Object.entries(LEVELS)) {
+      const b = chip(name, `var(--${lv})`, state.levels.has(lv), () => { b.classList.toggle("on"); toggle(state.levels, lv); });
+      b.dataset.v = lv; $("levels").append(b);
+      $("form").level.append(new Option(name, lv, lv === "info", lv === "info"));
+    }
+  }
+  function buildCatChips(cats) {
+    const row = $("cats"); row.querySelectorAll(".chip,.clear").forEach((c) => c.remove());
+    for (const c of cats) {
+      const b = chip(c.label, c.color, state.cats.has(c.name), () => { b.classList.toggle("on"); toggle(state.cats, c.name); });
+      b.dataset.v = c.name; row.append(b);
+    }
+    const sel = $("form").category, def = sel.dataset.def || "";
+    sel.innerHTML = ""; sel.append(new Option("– keine –", ""));
+    cats.filter((c) => c.name !== "_none").forEach((c) => sel.append(new Option(c.label, c.name)));
+    sel.value = def;
+  }
+  function buildTagChips(tags) {
+    const row = $("tags");
+    const sig = tags.map((t) => t.tag).join("|") + "#" + [...state.tags].join("|");
+    if (row.dataset.sig === sig) return;
+    row.dataset.sig = sig;
+    row.querySelectorAll(".chip").forEach((c) => c.remove());
+    const all = [...new Set([...tags.map((t) => t.tag), ...state.tags])];
+    row.hidden = !all.length;
+    for (const tag of all.slice(0, 20)) {
+      const n = tags.find((t) => t.tag === tag)?.count;
+      const b = chip("#" + tag, null, state.tags.has(tag), () => toggle(state.tags, tag));
+      b.querySelector(".n").textContent = n || ""; row.append(b);
+    }
+  }
+  function anyFilter() {
+    return state.cats.size || state.levels.size || state.tags.size || state.statuses.size || state.q || state.source;
+  }
+  function updateCounts(stats) {
+    const sc = { new: stats.new, seen: stats.seen, acked: null };
+    for (const b of $("statuses").querySelectorAll(".chip")) {
+      const n = b.querySelector(".n"); n.textContent = sc[b.dataset.v] || "";
+      n.classList.toggle("hot", b.dataset.v === "new" && stats.new > 0);
+    }
+    for (const b of $("levels").querySelectorAll(".chip")) {
+      const n = stats.unread_by_level[b.dataset.v]; b.querySelector(".n").textContent = n || "";
+    }
+    for (const b of $("cats").querySelectorAll(".chip")) {
+      const info = stats.unread_by_category[b.dataset.v]; const n = b.querySelector(".n");
+      n.textContent = info?.unread || "";
+      n.classList.toggle("hot", !!info && ["error", "critical"].includes(info.highest_level));
+    }
+    const active = state.cats.size + state.levels.size + state.tags.size + state.statuses.size;
+    $("filterCount").textContent = active || "";
+    $("btnFilter").classList.toggle("on", !!active);
+    let clr = $("statuses").querySelector(".clear");
+    if (anyFilter() && !clr) {
+      clr = Object.assign(document.createElement("button"), { className: "clear", textContent: "Filter zurücksetzen" });
+      clr.onclick = () => {
+        state.cats.clear(); state.levels.clear(); state.tags.clear(); state.statuses.clear(); state.q = ""; state.source = "";
+        $("q").value = ""; $("source").value = "";
+        document.querySelectorAll(".filters .chip.on").forEach((c) => c.classList.remove("on"));
+        $("tags").dataset.sig = ""; saveFilter(); reset();
+      };
+      $("statuses").append(clr);
+    } else if (!anyFilter() && clr) clr.remove();
+  }
+
+  // ---- Liste ---------------------------------------------------------
+  function card(e) {
+    const open = state.open.has(e.id);
+    const cat = e.category ? catInfo(e.category) : null;
+    const acked = e.status === "acked";
+    const hasData = e.data && Object.keys(e.data).length;
+    const seenInfo = e.status === "seen" && e.seen_time
+      ? `<span title="Gesehen ${new Date(e.seen_time).toLocaleString("de-DE")}">${ICON.eye} ${esc(e.seen_by || "gesehen")} · ${ago(e.seen_time)}</span>` : "";
+    const ackLine = acked
+      ? `<div class="ackline">${ICON.checkSm}<span>Quittiert${e.acked_by ? " von " + esc(e.acked_by) : ""}${e.acked_time ? " · " + ago(e.acked_time) : ""}</span>
+         ${e.ack_note ? `<q>${esc(e.ack_note)}</q>` : ""}</div>` : "";
+    const detail = open ? `<div class="detail" data-act="noop">
+        ${!acked ? `<form class="ackform" data-act="ackform">
+            <input name="note" placeholder="Kommentar (optional), z. B. was getan wurde" maxlength="500" autocomplete="off">
+            <button class="btn ok" type="submit">${ICON.checkSm} Quittieren</button></form>` : ""}
+        <pre>${esc(JSON.stringify({ id: e.id, status: STATUS[e.status], key: e.key, kategorie: e.category || null,
+          erstellt: e.created, aktualisiert: e.time,
+          gesehen: e.seen_time ? `${e.seen_time} (${e.seen_by || "?"})` : null,
+          quittiert: e.acked_time ? `${e.acked_time} (${e.acked_by || "?"})` : null,
+          weitergeleitet: e.forwarded || null, data: e.data }, null, 2))}</pre></div>`
+      : (hasData || !acked) ? `<div class="meta"><span>▸ ${acked ? "Details" : "Details / mit Kommentar quittieren"}</span></div>` : "";
+    return `<article class="ev s-${e.status}" style="--lv:var(--${e.level})" data-id="${e.id}" data-status="${e.status}">
+      <div class="stripe"></div>
+      <div class="body" data-act="toggle">
+        <div class="top"><span class="lvl">${LEVELS[e.level]}</span>
+          ${e.status === "new" ? `<span class="st new">Neu</span>` : ""}
+          ${acked ? `<span class="st acked">Erledigt</span>` : ""}
+          ${cat ? `<span class="cat" style="--cat:${cat.color}">${esc(cat.label)}</span>` : ""}
+          ${e.count > 1 ? `<span class="count" title="Wiederholungen">×${e.count}</span>` : ""}</div>
+        <div class="title">${esc(e.title)}</div>
+        ${e.message ? `<div class="msg">${esc(e.message)}</div>` : ""}
+        <div class="meta">
+          ${e.source ? `<span>${esc(e.source)}</span>` : ""}
+          <span title="${new Date(e.time).toLocaleString("de-DE")}">${ago(e.time)}</span>
+          ${seenInfo}
+          ${e.tags.map((t) => `<span class="tag" data-act="tag" data-tag="${esc(t)}">#${esc(t)}</span>`).join("")}
+        </div>
+        ${ackLine}
+        ${detail}
+      </div>
+      <div class="actions">
+        ${acked ? `<button class="btn ghost icon" data-act="reopen" title="Wieder öffnen">${ICON.reopen}</button>`
+                : `<button class="btn ghost icon ack" data-act="ack" title="Quittieren">${ICON.check}</button>`}
+        <button class="btn ghost icon" data-act="del" title="Löschen">${ICON.trash}</button>
+      </div></article>`;
+  }
+  function groupKey(e) {
+    if (state.sort === "category") { const c = catInfo(e.category); return [c.label, c.color]; }
+    if (state.sort === "source") return [e.source || "Ohne Quelle", null];
+    if (state.sort === "severity") return [LEVELS[e.level], `var(--${e.level})`];
+    return null;
+  }
+  const typing = () => document.activeElement && $("list").contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+
+  function render(data, force = false) {
+    const { events, total, stats } = data;
+    STATS = stats;
+    const b = $("badge"); b.textContent = stats.unread; b.classList.toggle("zero", !stats.unread);
+    $("badgeNew").hidden = !stats.new; $("badgeNew").textContent = `${stats.new} neu`;
+    document.title = stats.new ? `(${stats.new}) Notify` : "Notify";
+
+    // neue, nicht konfigurierte Kategorien aufnehmen
+    const known = new Set(CATS.map((c) => c.name));
+    if (stats.categories.some((c) => !known.has(c))) return init(false);
+    updateCounts(stats);
+    buildTagChips(stats.tags);
+
+    const sel = $("source"), cur = state.source;
+    const opts = ["", ...stats.sources];
+    if (sel.options.length !== opts.length || [...sel.options].some((o, i) => o.value !== opts[i])) {
+      sel.innerHTML = ""; sel.append(new Option("Alle Quellen", ""));
+      stats.sources.forEach((s) => sel.append(new Option(s, s)));
+      sel.value = stats.sources.includes(cur) ? cur : "";
+    }
+    $("btnMore").hidden = events.length >= total;
+
+    // Nur neu zeichnen, wenn sich etwas geändert hat – und nie, während jemand tippt
+    const sig = JSON.stringify([events, [...state.open], state.sort, Math.floor(Date.now() / 60000)]);
+    if (!force && (sig === lastSig || typing())) return;
+    lastSig = sig;
+
+    const list = $("list");
+    if (!events.length) {
+      list.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+        <div>${anyFilter() ? "Keine Ereignisse für diesen Filter." : "Noch keine Ereignisse – alles ruhig."}</div></div>`;
+    } else {
+      let html = "", last = null;
+      for (const e of events) {
+        const g = groupKey(e);
+        if (g && g[0] !== last) {
+          last = g[0];
+          html += `<div class="group">${g[1] ? `<span class="sw" style="background:${g[1]}"></span>` : ""}${esc(g[0])}</div>`;
+        }
+        html += card(e);
+      }
+      list.innerHTML = html;
+    }
+    observeNew();
+  }
+
+  // ---- Automatisch „gesehen“: Karte ≥ 60 % sichtbar für 1,5 s ----------
+  const seenTimers = new Map(), seenQueue = new Set();
+  let flushTimer = null;
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      const id = +en.target.dataset.id;
+      if (en.isIntersecting) {
+        if (!seenTimers.has(id)) seenTimers.set(id, setTimeout(() => queueSeen(id), SEEN_DELAY));
+      } else { clearTimeout(seenTimers.get(id)); seenTimers.delete(id); }
+    }
+  }, { threshold: 0.6 });
+  function observeNew() {
+    io.disconnect(); seenTimers.forEach(clearTimeout); seenTimers.clear();
+    if (!state.autoSeen) return;
+    document.querySelectorAll(".ev.s-new").forEach((el) => io.observe(el));
+  }
+  function queueSeen(id) {
+    seenTimers.delete(id);
+    if (document.hidden || !document.hasFocus()) return observeNew();   // später erneut versuchen
+    seenQueue.add(id);
+    clearTimeout(flushTimer); flushTimer = setTimeout(flushSeen, 400);
+  }
+  async function flushSeen() {
+    const ids = [...seenQueue]; seenQueue.clear();
+    if (!ids.length) return;
+    try { await post("api/events/seen", { ids }); load(); } catch {}
+  }
+
+  // ---- Laden ---------------------------------------------------------
+  function renderMonitors(mons) {
+    const box = $("monitors"); box.hidden = !mons.length;
+    box.innerHTML = mons.map((m) => {
+      const sub = m.status === "down" ? `seit ${dur(m.down_since)} · ${esc(m.last_error)}`
+        : m.status === "up" ? `${m.response_ms ?? "–"} ms · ${ago(m.last_check)}` : "wird geprüft …";
+      return `<div class="mon ${m.status}" data-slug="${m.slug}" title="${esc(m.url)} – klicken zum sofortigen Prüfen">
+        <span class="dot"></span><div><div>${esc(m.name)}</div><div class="sub">${sub}</div></div></div>`;
+    }).join("");
+  }
+  let loading = null;
+  async function load(force = false) {
+    const p = new URLSearchParams({ limit: state.limit, sort: state.sort });
+    if (state.levels.size) p.set("level", [...state.levels].join(","));
+    if (state.cats.size) p.set("category", [...state.cats].join(","));
+    if (state.tags.size) p.set("tag", [...state.tags].join(","));
+    if (state.statuses.size) p.set("status", [...state.statuses].join(","));
+    if (state.q) p.set("q", state.q);
+    if (state.source) p.set("source", state.source);
+    const my = loading = p.toString();
+    try {
+      const data = await api("api/events?" + p);
+      if (my === loading) render(data, force);
+    } catch (err) { $("list").innerHTML = `<div class="empty">Fehler beim Laden: ${esc(err.message)}</div>`; lastSig = ""; }
+  }
+  async function loadMonitors() { try { renderMonitors(await api("api/monitors")); } catch {} }
+  let me = "";
+  async function health() {
+    try {
+      const h = await api("api/health");
+      $("dot").classList.toggle("ok", h.ha_connected);
+      $("conn").textContent = (h.ha_connected ? "HA verbunden" : "HA getrennt") + (me ? ` · ${me}` : "");
+    } catch { $("dot").classList.remove("ok"); $("conn").textContent = "offline"; }
+  }
+  function reset() { state.limit = PAGE; load(true); }
+
+  async function init(first = true) {
+    CFG = await api("api/config");
+    CATS = CFG.categories;
+    $("form").category.dataset.def = CFG.default_category;
+    buildCatChips(CATS);
+    if (first) {
+      buildStaticChips();
+      $("sort").value = state.sort;
+      $("autoSeenMark").style.visibility = state.autoSeen ? "visible" : "hidden";
+      if (CFG.monitors) loadMonitors();
+      try { me = (await api("api/whoami")).name; if (["Weboberfläche", "API"].includes(me)) me = ""; } catch {}
+      health();
+    }
+    load(true);
+  }
+
+  // ---- Aktionen ------------------------------------------------------
+  async function ackOne(id, note = "") {
+    await post(`api/events/${id}/ack`, { note });
+    state.open.delete(id);
+    toast("Quittiert", "Rückgängig", async () => { await post(`api/events/${id}/reopen`); load(true); });
+    load(true);
+  }
+
+  $("q").oninput = (e) => { clearTimeout($("q")._t); $("q")._t = setTimeout(() => { state.q = e.target.value.trim(); reset(); }, 250); };
+  $("source").onchange = (e) => { state.source = e.target.value; reset(); };
+  $("sort").onchange = (e) => { state.sort = e.target.value; saveFilter(); reset(); };
+  $("btnMore").onclick = () => { state.limit += PAGE; load(true); };
+  $("btnFilter").onclick = () => document.querySelector(".filters").classList.toggle("open");
+
+  $("list").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const card = e.target.closest(".ev");
+    await ackOne(+card.dataset.id, e.target.note.value.trim());
+  });
+  $("list").onclick = async (e) => {
+    const el = e.target.closest("[data-act]"); if (!el) return;
+    const act = el.dataset.act;
+    if (act === "noop" || act === "ackform") return;          // Klick in Detailbereich: nicht zuklappen
+    const card = el.closest(".ev"), id = +card.dataset.id;
+    if (act === "tag") { e.stopPropagation(); state.tags.add(el.dataset.tag); saveFilter(); return reset(); }
+    if (act === "toggle") {
+      const opening = !state.open.has(id);
+      opening ? state.open.add(id) : state.open.delete(id);
+      if (card.dataset.status === "new") await post(`api/events/${id}/seen`);
+      await load(true);
+      if (opening) document.querySelector(`.ev[data-id="${id}"] .ackform input`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (act === "ack") return ackOne(id);
+    if (act === "reopen") { await post(`api/events/${id}/reopen`); toast("Wieder geöffnet"); }
+    if (act === "del") await api(`api/events/${id}`, { method: "DELETE" });
+    load(true);
+  };
+  $("monitors").onclick = async (e) => {
+    const m = e.target.closest(".mon"); if (!m) return;
+    await post(`api/monitors/${m.dataset.slug}/check`);
+    toast("Prüfung gestartet"); setTimeout(loadMonitors, 1500); setTimeout(() => load(), 1800);
+  };
+  $("btnAckAll").onclick = async () => {
+    // Respektiert den Kategorie-Filter; sonst alle offenen
+    const cats = [...state.cats];
+    const open = cats.length
+      ? cats.reduce((n, c) => n + (STATS.unread_by_category?.[c]?.unread || 0), 0)
+      : STATS.unread || 0;
+    if (!open) return toast("Nichts offen");
+    const what = cats.length ? `in ${cats.map((c) => catInfo(c).label).join(", ")} ` : "";
+    if (open > 3 && !confirm(`${open} offene Ereignisse ${what}quittieren?`)) return;
+    let n = 0;
+    if (cats.length) for (const c of cats) n += (await post("api/events/ack", { category: c })).changed;
+    else n = (await post("api/events/ack")).changed;
+    toast(`${n} quittiert`); load(true);
+  };
+
+  const menu = $("menu");
+  $("btnMenu").onclick = (e) => { e.stopPropagation(); menu.classList.toggle("open"); };
+  document.addEventListener("click", () => menu.classList.remove("open"));
+  menu.onclick = async (e) => {
+    const act = e.target.closest("[data-act]")?.dataset.act; if (!act) return;
+    if (act === "autoseen") {
+      state.autoSeen = !state.autoSeen; saveFilter();
+      $("autoSeenMark").style.visibility = state.autoSeen ? "visible" : "hidden";
+      e.stopPropagation(); observeNew();
+      return toast(state.autoSeen ? "Wird beim Anzeigen als gesehen markiert" : "Nur noch beim Aufklappen als gesehen markiert");
+    }
+    if (act === "seenall") {
+      const cats = [...state.cats]; let n = 0;
+      if (cats.length) for (const c of cats) n += (await post("api/events/seen", { category: c })).changed;
+      else n = (await post("api/events/seen")).changed;
+      toast(`${n} als gesehen markiert`);
+    }
+    if (act === "new") {
+      $("form").reset();
+      const one = state.cats.size === 1 ? [...state.cats][0] : $("form").category.dataset.def;
+      $("form").category.value = one !== "_none" ? one : "";
+      $("dlg").showModal();
+    }
+    if (act === "export") {
+      const data = await api("api/export");
+      const a = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })),
+        download: `notify-${new Date().toISOString().slice(0, 10)}.json` });
+      a.click(); URL.revokeObjectURL(a.href);
+    }
+    if (act === "delacked" && confirm("Alle quittierten Ereignisse löschen?")) {
+      const r = await post("api/events/delete", { read_only: true }); toast(`${r.deleted} gelöscht`);
+    }
+    if (act === "delall" && confirm("Wirklich ALLE Ereignisse löschen?")) {
+      const r = await post("api/events/delete", { all: true }); toast(`${r.deleted} gelöscht`);
+    }
+    load(true);
+  };
+  $("dlg").addEventListener("close", async () => {
+    if ($("dlg").returnValue !== "ok") return;
+    const f = Object.fromEntries(new FormData($("form")));
+    try { await post("api/events", f); toast("Ereignis gespeichert"); load(true); }
+    catch (err) { toast("Fehler: " + err.message); }
+  });
+
+  // Aktualisieren: alle 5 s, pausiert im Hintergrund
+  loadFilter();
+  init().catch((err) => { $("list").innerHTML = `<div class="empty">Fehler: ${esc(err.message)}</div>`; });
+  setInterval(() => { if (!document.hidden) { load(); if (!$("monitors").hidden) loadMonitors(); } }, 5000);
+  setInterval(() => { if (!document.hidden) health(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { load(); health(); observeNew(); } });
+  window.addEventListener("focus", observeNew);
+})();
+</script>
+</body>
+</html>

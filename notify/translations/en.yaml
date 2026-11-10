@@ -1,0 +1,50 @@
+configuration:
+  retention_days:
+    name: Retention (days)
+    description: Older events are deleted automatically.
+  max_events:
+    name: Maximum number of events
+    description: Beyond this, the oldest events are removed, acknowledged ones first.
+  api_token:
+    name: API token
+    description: 'Required for access from outside Home Assistant (port 8099). Header "Authorization: Bearer <token>" or "?token=<token>".'
+  default_category:
+    name: Default category
+    description: Category for events that do not specify one (empty = no category).
+  categories:
+    name: Categories
+    description: 'List with name, label, icon, color and optionally forward_service / forward_min_level (forwarding for this category only, "none" = never forward).'
+  monitors:
+    name: Web monitors
+    description: 'List with name and url (http/https or tcp://host:port), optionally category, interval, timeout, failures, keyword, expect_status, level, verify_ssl.'
+  event_type:
+    name: Event type for new events
+    description: Home Assistant event the add-on listens to (e.g. from automations).
+  ack_event_type:
+    name: Event type for acknowledging
+    description: Home Assistant event that acknowledges events (optionally with by, note, id/ids, key, category).
+  seen_event_type:
+    name: Event type for "seen"
+    description: Home Assistant event that marks events as seen.
+  ack_min_level:
+    name: Acknowledgement required from level
+    description: From this level on an event must be acknowledged explicitly. Below it, "seen" closes it. "debug" = everything must be acknowledged.
+  mobile_actions:
+    name: Buttons in phone notifications
+    description: Forwarded messages to notify.mobile_app_… get "Acknowledge", "Seen" and "With comment". After acknowledging, the notification is removed from the phone.
+  fire_events:
+    name: Fire Home Assistant events
+    description: Fire "notify_received" for new events and "notify_acknowledged" when acknowledged so automations can react.
+  sensor_events:
+    name: Events in sensor
+    description: Number of recent events exposed as attribute of sensor.notify_unread (for dashboard cards).
+  forward_service:
+    name: Forward to
+    description: Optional notify service, e.g. notify.mobile_app_pixel. Empty = no forwarding.
+  forward_min_level:
+    name: Forward from level
+    description: Only events at or above this level are forwarded.
+  log_level:
+    name: Log level
+network:
+  8099/tcp: REST API for devices outside Home Assistant (API token required)
